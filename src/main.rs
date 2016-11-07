@@ -24,12 +24,22 @@ pub enum Expression {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Value {
     Bool(bool),
-    Number(i32)
+    Number(i32),
+    String(String),
+    Array(Vec<Expression>),
+    Nil
 }
 
 impl Evaluter for Value {
     fn eval(self) -> Result<Expression, Error> {
-        Ok(Expression::Value(self))
+        use Value::*;
+        match self {
+            Array(arr) => arr.into_iter()
+                .map(|e| e.eval())
+                .collect::<Result<Vec<_>, _>>()
+                .map(|v| Expression::Value(Array(v))),
+            val => Ok(Expression::Value(val))
+        }
     }
 }
 
@@ -48,7 +58,7 @@ pub struct Cont {
 
 impl Cont {
     fn transform(self) -> Expression {
-        self.rights.iter().fold(self.left, |l, c| match c.clone() {
+        self.rights.into_iter().fold(self.left, |l, c| match c {
             ContOperator::Add(r) =>
                 Expression::Operator(Operator::Add(Box::new(l), Box::new(r))),
             ContOperator::Sub(r) =>
@@ -65,7 +75,8 @@ pub enum Operator {
     Or(Box<Expression>, Box<Expression>),
     Add(Box<Expression>, Box<Expression>),
     Sub(Box<Expression>, Box<Expression>),
-    Mul(Box<Expression>, Box<Expression>)
+    Mul(Box<Expression>, Box<Expression>),
+    Equal(Box<Expression>, Box<Expression>)
 }
 
 impl Evaluter for Operator {
@@ -113,6 +124,15 @@ impl Evaluter for Operator {
                     (Value(Number(lb)), Value(Number(rb))) => Number(lb * rb).eval(),
                     _ => Err(Error::RuntimeError("must number".to_string()))
                 }
+            },
+            Equal(l, r) => {
+                let left = try!(l.eval());
+                let right = try!(r.eval());
+                if left == right {
+                    Bool(true).eval()
+                } else {
+                    Bool(false).eval()
+                }
             }
         }
     }
@@ -138,7 +158,14 @@ use super::ContOperator;
 
 #[pub]
 expression -> Expression
-    = e10
+    = e11
+
+e11 -> Expression
+    = o:equal { Expression::Operator(o) }
+    / e10
+
+equal -> Operator
+    = l:e10 space "==" space r:e11 { Operator::Equal(Box::new(l), Box::new(r)) }
 
 e10 -> Expression
     = l:e9 rights:e10_cont* { Cont { left: l, rights: rights }.transform() }
@@ -174,7 +201,14 @@ e3 -> Expression
     = e2
 
 e2 -> Expression
-    = e1
+    = o:(inc / dec) { Expression::Operator(o) }
+    / e1
+
+inc -> Operator
+    = e:e1 "++" { Add(Box::new(e), Box::new(Expression::Value(Value::Number(1)))) }
+
+dec -> Operator
+    = e:e1 "--" { Sub(Box::new(e), Box::new(Expression::Value(Value::Number(1)))) }
 
 e1 -> Expression
     = e0
@@ -184,14 +218,28 @@ e0 -> Expression
     / v:value { Expression::Value(v) }
 
 value -> Value
-    = number / boolean
+    = number / boolean / string / array / nil
+
+string -> Value
+    = double_quote s:raw_str double_quote { Value::String(s) }
+
+raw_str -> String
+    = s:[^"]* { match_str.to_string() }
 
 number -> Value
-    = [0-9]+ { Value::Number(match_str.parse().unwrap()) }
+    =  "-"? [0-9]+ { Value::Number(match_str.parse().unwrap()) }
 
 boolean -> Value
     = "true" { Value::Bool(true) }
     / "false" { Value::Bool(false) }
+
+array -> Value
+    = "[" space array:expression**(space "," space) space "]" { Value::Array(array) }
+
+nil -> Value
+    = "nil" { Value::Nil }
+
+double_quote = "\""
 
 space
     = " "* { () }
