@@ -47,7 +47,8 @@ impl Evaluter for Value {
 pub enum ContOperator {
     Add(Expression),
     Sub(Expression),
-    Mul(Expression)
+    Mul(Expression),
+    Link(Expression)
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -64,7 +65,9 @@ impl Cont {
             ContOperator::Sub(r) =>
                 Expression::Operator(Operator::Sub(Box::new(l), Box::new(r))),
             ContOperator::Mul(r) =>
-                Expression::Operator(Operator::Mul(Box::new(l), Box::new(r)))
+                Expression::Operator(Operator::Mul(Box::new(l), Box::new(r))),
+            ContOperator::Link(r) =>
+                Expression::Operator(Operator::Link(Box::new(l), Box::new(r)))
         })
     }
 }
@@ -76,6 +79,7 @@ pub enum Operator {
     Add(Box<Expression>, Box<Expression>),
     Sub(Box<Expression>, Box<Expression>),
     Mul(Box<Expression>, Box<Expression>),
+    Link(Box<Expression>, Box<Expression>),
     Equal(Box<Expression>, Box<Expression>)
 }
 
@@ -125,6 +129,19 @@ impl Evaluter for Operator {
                     _ => Err(Error::RuntimeError("must number".to_string()))
                 }
             },
+            Link(l, r) => {
+                let left = try!(l.eval());
+                let right = try!(r.eval());
+                match (left, right) {
+                    (Value(String(lb)), Value(String(rb))) => String(
+                        lb.chars().chain(rb.chars()).collect()
+                    ).eval(),
+                    (Value(Array(lb)), Value(Array(rb))) => Array(
+                        lb.into_iter().chain(rb.into_iter()).collect()
+                    ).eval(),
+                    _ => Err(Error::RuntimeError("must string or array".to_string()))
+                }
+            }
             Equal(l, r) => {
                 let left = try!(l.eval());
                 let right = try!(r.eval());
@@ -183,7 +200,11 @@ e9_cont -> ContOperator
     = space "*" space r:e8 { ContOperator::Mul(r) }
 
 e8 -> Expression
-    = e7
+    = l:e7 rights:e8_cont* { Cont { left: l, rights: rights }.transform() }
+    / e7
+
+e8_cont -> ContOperator
+    = space "++" space r:e7 { ContOperator::Link(r) }
 
 e7 -> Expression
     = e6
