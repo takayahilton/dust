@@ -26,6 +26,7 @@ pub enum Value {
     Bool(bool),
     Number(i32),
     String(String),
+    UnevaluatedArray(Vec<Expression>),
     Array(Vec<Expression>),
     Nil
 }
@@ -34,7 +35,7 @@ impl Evaluter for Value {
     fn eval(self) -> Result<Expression, Error> {
         use Value::*;
         match self {
-            Array(arr) => arr.into_iter()
+            UnevaluatedArray(arr) => arr.into_iter()
                 .map(|e| e.eval())
                 .collect::<Result<Vec<_>, _>>()
                 .map(|v| Expression::Value(Array(v))),
@@ -226,10 +227,10 @@ e2 -> Expression
     / e1
 
 inc -> Operator
-    = e:e1 "++" { Add(Box::new(e), Box::new(Expression::Value(Value::Number(1)))) }
+    = e:e1 "++" space !expression { Add(Box::new(e), Box::new(Expression::Value(Value::Number(1)))) }
 
 dec -> Operator
-    = e:e1 "--" { Sub(Box::new(e), Box::new(Expression::Value(Value::Number(1)))) }
+    = e:e1 "--" space !expression { Sub(Box::new(e), Box::new(Expression::Value(Value::Number(1)))) }
 
 e1 -> Expression
     = e0
@@ -255,7 +256,7 @@ boolean -> Value
     / "false" { Value::Bool(false) }
 
 array -> Value
-    = "[" space array:expression**(space "," space) space "]" { Value::Array(array) }
+    = "[" space array:expression**(space "," space) space "]" { Value::UnevaluatedArray(array) }
 
 nil -> Value
     = "nil" { Value::Nil }
