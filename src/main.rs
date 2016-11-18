@@ -49,6 +49,8 @@ pub enum ContOperator {
     Add(Expression),
     Sub(Expression),
     Mul(Expression),
+    And(Expression),
+    Or(Expression),
     Link(Expression)
 }
 
@@ -67,6 +69,10 @@ impl Cont {
                 Expression::Operator(Operator::Sub(Box::new(l), Box::new(r))),
             ContOperator::Mul(r) =>
                 Expression::Operator(Operator::Mul(Box::new(l), Box::new(r))),
+            ContOperator::And(r) =>
+                Expression::Operator(Operator::And(Box::new(l), Box::new(r))),
+            ContOperator::Or(r) =>
+                Expression::Operator(Operator::Or(Box::new(l), Box::new(r))),
             ContOperator::Link(r) =>
                 Expression::Operator(Operator::Link(Box::new(l), Box::new(r)))
         })
@@ -91,48 +97,48 @@ impl Evaluter for Operator {
         use Value::*;
         match self {
             And(l, r) => {
-                let left = try!(l.eval());
-                let right = try!(r.eval());
+                let left = l.eval()?;
+                let right = r.eval()?;
                 match (left, right) {
                     (Value(Bool(lb)), Value(Bool(rb))) => Bool(lb && rb).eval(),
                     _ => Err(Error::RuntimeError("must bool".to_string()))
                 }
             },
             Or(l, r) => {
-                let left = try!(l.eval());
-                let right = try!(r.eval());
+                let left = l.eval()?;
+                let right = r.eval()?;
                 match (left, right) {
                     (Value(Bool(lb)), Value(Bool(rb))) => Bool(lb || rb).eval(),
                     _ => Err(Error::RuntimeError("must bool".to_string()))
                 }
             },
             Add(l, r) => {
-                let left = try!(l.eval());
-                let right = try!(r.eval());
+                let left = l.eval()?;
+                let right = r.eval()?;
                 match (left, right) {
                     (Value(Number(lb)), Value(Number(rb))) => Number(lb + rb).eval(),
                     _ => Err(Error::RuntimeError("must number".to_string()))
                 }
             },
             Sub(l, r) => {
-                let left = try!(l.eval());
-                let right = try!(r.eval());
+                let left = l.eval()?;
+                let right = r.eval()?;
                 match (left, right) {
                     (Value(Number(lb)), Value(Number(rb))) => Number(lb - rb).eval(),
                     _ => Err(Error::RuntimeError("must number".to_string()))
                 }
             },
             Mul(l, r) => {
-                let left = try!(l.eval());
-                let right = try!(r.eval());
+                let left = l.eval()?;
+                let right = r.eval()?;
                 match (left, right) {
                     (Value(Number(lb)), Value(Number(rb))) => Number(lb * rb).eval(),
                     _ => Err(Error::RuntimeError("must number".to_string()))
                 }
             },
             Link(l, r) => {
-                let left = try!(l.eval());
-                let right = try!(r.eval());
+                let left = l.eval()?;
+                let right = r.eval()?;
                 match (left, right) {
                     (Value(String(lb)), Value(String(rb))) => String(
                         lb.chars().chain(rb.chars()).collect()
@@ -144,8 +150,8 @@ impl Evaluter for Operator {
                 }
             }
             Equal(l, r) => {
-                let left = try!(l.eval());
-                let right = try!(r.eval());
+                let left = l.eval()?;
+                let right = r.eval()?;
                 if left == right {
                     Bool(true).eval()
                 } else {
@@ -176,51 +182,50 @@ use super::ContOperator;
 
 #[pub]
 expression -> Expression
-    = e11
-
-e11 -> Expression
-    = o:equal { Expression::Operator(o) }
-    / e10
-
-equal -> Operator
-    = l:e10 space "==" space r:e11 { Operator::Equal(Box::new(l), Box::new(r)) }
-
-e10 -> Expression
-    = l:e9 rights:e10_cont* { Cont { left: l, rights: rights }.transform() }
-    / e9
-
-e10_cont -> ContOperator
-    = space "+" space r:e9 { ContOperator::Add(r) }
-    / space "-" space r:e9 { ContOperator::Sub(r) }
-
-e9 -> Expression
-    = l:e8 rights:e9_cont* { Cont { left: l, rights: rights }.transform() }
-    / e8
-
-e9_cont -> ContOperator
-    = space "*" space r:e8 { ContOperator::Mul(r) }
+    = e8
 
 e8 -> Expression
-    = l:e7 rights:e8_cont* { Cont { left: l, rights: rights }.transform() }
+    =l:e7 rights:e8_cont* { Cont { left: l, rights: rights }.transform() }
     / e7
 
 e8_cont -> ContOperator
-    = space "++" space r:e7 { ContOperator::Link(r) }
+    = space "||" space r:e7 { ContOperator::Or(r) }
 
 e7 -> Expression
-    = e6
+    =l:e6 rights:e7_cont* { Cont { left: l, rights: rights }.transform() }
+    / e6
+
+e7_cont -> ContOperator
+    = space "&&" space r:e6 { ContOperator::And(r) }
 
 e6 -> Expression
-    = e5
+    = o:equal { Expression::Operator(o) }
+    / e5
+
+equal -> Operator
+    = l:e5 space "==" space r:e6 { Operator::Equal(Box::new(l), Box::new(r)) }
 
 e5 -> Expression
-    = e4
+    = l:e4 rights:e5_cont* { Cont { left: l, rights: rights }.transform() }
+    / e4
+
+e5_cont -> ContOperator
+    = space "+" space r:e4 { ContOperator::Add(r) }
+    / space "-" space r:e4 { ContOperator::Sub(r) }
 
 e4 -> Expression
-    = e3
+    = l:e3 rights:e4_cont* { Cont { left: l, rights: rights }.transform() }
+    / e3
+
+e4_cont -> ContOperator
+    = space "*" space r:e3 { ContOperator::Mul(r) }
 
 e3 -> Expression
-    = e2
+    = l:e2 rights:e3_cont* { Cont { left: l, rights: rights }.transform() }
+    / e2
+
+e3_cont -> ContOperator
+    = space "++" space r:e2 { ContOperator::Link(r) }
 
 e2 -> Expression
     = o:(inc / dec) { Expression::Operator(o) }
